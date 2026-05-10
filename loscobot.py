@@ -9,38 +9,36 @@ APP_PASSWORD = input("Inserisci la APP password: ")
 IMAP_SERVER = "imap.gmail.com"
 SUBJECT = "Conferma la tua presenza"
 
-def UrlAndPinExtractionFromEmail():
+def url_and_pin_extraction_from_email():
     url = None
     student_pin = None
-    link_filter = "https://sirp.regione.puglia.it/gradebook/confirm-entries/"
     regex_link = r'https://sirp\.regione\.puglia\.it/gradebook/confirm-entries/[^\s"<>]+'
-    with MailBox(IMAP_SERVER).login(EMAIL, APP_PASSWORD) as mailbox:
-        i = 0
-        for mail in mailbox.fetch(AND(seen=False, subject=SUBJECT)):
-            i = i+1
-            text = mail.text
-            if link_filter in text:
-                print("Link trovato nell'email, estrazione...")
+    try:
+        with MailBox(IMAP_SERVER).login(EMAIL, APP_PASSWORD) as mailbox:
+            for mail in mailbox.fetch(AND(seen=False, subject=SUBJECT)):
+                print("Email con oggetto '"+SUBJECT+"' trovata! Cerco il link...")
+                text = mail.text
                 link = re.search(regex_link, text)
                 if link:
+                    print("Link trovato! Estrazione url e pin...")
                     url = link.group(0)
                     print("Link estratto: "+url)
+                    pin_match = re.search(r'\[(\d+)\]', text)
+                    if pin_match:
+                        student_pin = pin_match.group(1)
+                        print("Pin studente estratto: "+student_pin)
+                    else:
+                        print("Errore nella estrazione del pin")
                 else:
-                    print("Errore nella estrazione del link!")
-                
-                index1 = text.find("[")
-                index2 = text.find("]")
-                student_pin = text[index1+1:index2]
-                print("pin studente estratto: "+student_pin)
-            else:
-                print("Link non presente nell'email!")
-    if i == 0: print("Nessuna mail corrispondente trovata!")
+                    print("Link non trovato nel testo dell'email!")
+    except Exception as e:
+        print(f"[/!\] Errore durante il controllo della mail: {e}")
     return url, student_pin
 
-def LessonConfirmation(url, student_pin):
-    if url != None and student_pin != None:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+def lesson_confirmation(url, student_pin):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
             page = browser.new_page()
             page.goto(url)
             page.wait_for_load_state("networkidle")
@@ -48,7 +46,7 @@ def LessonConfirmation(url, student_pin):
             lesson_code = page.locator("h5.mt-0.font-normal").inner_text()
             lesson_code = lesson_code.split("Codice Lezione: ")[1].strip()
             print(f"Codice lezione estratto: {lesson_code}\nProcedo con la conferma...")
-            
+
             page.get_by_role("button", name="Conferma orari").click()
             page.wait_for_load_state("networkidle")
 
@@ -61,18 +59,21 @@ def LessonConfirmation(url, student_pin):
 
             page.wait_for_load_state("networkidle")
             time.sleep(2)
-            datetime_now = datetime.now().strftime('%d-%m-%Y_%H:%M:%S')
-            page.screenshot(path=f"Conferma_{datetime_now}.png")
-            print("Screenshot salvato")
+            datetime_now = datetime.now().strftime('%dd%mm%Yy_%Hh%Mm%Ss')
+            screenshot_path = f"Conferma_{datetime_now}.png"
+            page.screenshot(path=screenshot_path)
+            print("[V] Screenshot salvato")
+        except Exception as e:
+            print(f"[/!\] Errore durante la conferma della lezione: {e}")
+        finally:
             browser.close()
-    else:
-        print("Conferma della presenza non effettuata!")
 
 if __name__ == "__main__":
-    print("Bot avviato, controllo ogni 30 secondi...")
+    print("Bot avviato, controllo mail in silenzio ogni 45 secondi...\n")
     while True:
-        print("\n--- Controllo email ---")
-        url, student_pin = UrlAndPinExtractionFromEmail()
-        LessonConfirmation(url, student_pin)
-        print("Prossimo controllo tra 30 secondi...")
-        time.sleep(30)
+        url, student_pin = url_and_pin_extraction_from_email()
+        if (url != None and student_pin != None):
+            lesson_confirmation(url, student_pin)
+        else: print("[/!\] Conferma non effettuata!")
+
+        time.sleep(45)
