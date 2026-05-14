@@ -29,13 +29,13 @@ def url_and_pin_extraction_from_email():
                         print("Pin studente estratto: "+student_pin)
                     else:
                         print("Errore nella estrazione del pin")
-                        print("[/!\] Conferma non effettuata!")
+                        print("!! Conferma non effettuata!")
                 else:
                     print("Link non trovato nel testo dell'email!")
-                    print("[/!\] Conferma non effettuata!")
+                    print("!! Conferma non effettuata!")
     except Exception as e:
-        print(f"[/!\] Errore durante il controllo della mail: {e}")
-        print("[/!\] Conferma non effettuata!")
+        print(f"!! Errore durante il controllo della mail: {e}")
+        print("!! Conferma non effettuata!")
     return url, student_pin
 
 def lesson_confirmation(url, student_pin):
@@ -65,10 +65,10 @@ def lesson_confirmation(url, student_pin):
             datetime_now = datetime.now().strftime('%dd%mm%Yy_%Hh%Mm%Ss')
             screenshot_path = f"Conferma_{datetime_now}.png"
             page.screenshot(path=screenshot_path)
-            print("[V] Screenshot salvato")
+            print("Screenshot salvato")
         except Exception as e:
-            print(f"[/!\] Errore durante la conferma della lezione: {e}")
-            print("[/!\] Conferma non effettuata!")
+            print(f"!! Errore durante la conferma della lezione: {e}")
+            print("!! Conferma non effettuata!")
         finally:
             browser.close()
 
