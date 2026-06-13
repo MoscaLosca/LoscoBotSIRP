@@ -89,25 +89,21 @@ def url_and_pin_extraction_from_email():
     return url, student_pin
 
 def check_confirmation_status(page):
-    """
-    Controlla se dopo la conferma appare una notifica verde (successo) o rossa (errore).
-    Restituisce (success: bool, message: str)
-    """
     try:
-        # Attendi al massimo 5 secondi la comparsa di una notifica
         notification = page.wait_for_selector(".alert, .toast, [role='alert']", timeout=5000)
         if notification:
             text = notification.inner_text().lower()
             class_attr = notification.get_attribute("class") or ""
-            if "success" in class_attr or "verde" in text or "confermata" in text:
-                return True, notification.inner_text()
-            elif "danger" in class_attr or "error" in class_attr or "rosso" in text or "errore" in text:
+
+            # Controlla prima gli errori
+            if "danger" in class_attr or "error" in class_attr or "errore" in text or "400" in text or "non è stata" in text:
                 return False, notification.inner_text()
-            else:
-                if any(word in text for word in ["successo", "confermata", "ok"]):
-                    return True, notification.inner_text()
-                else:
-                    return False, notification.inner_text()
+
+            # Solo dopo controlla il successo
+            if "success" in class_attr or any(word in text for word in ["successo", "ok"]):
+                return True, notification.inner_text()
+
+            return False, notification.inner_text()
         else:
             return False, "Nessuna notifica rilevata, esito sconosciuto"
     except Exception as e:
