@@ -3,11 +3,61 @@ import re
 from playwright.sync_api import sync_playwright, expect
 import time
 from datetime import datetime
+import requests
+import os
+from dotenv import load_dotenv
 
-EMAIL = input("Inserisci la tua mail: ")
-APP_PASSWORD = input("Inserisci la APP password: ")
-IMAP_SERVER = "imap.gmail.com"
-SUBJECT = "Conferma la tua presenza"
+# Carica le variabili dal file .env
+load_dotenv()
+
+# Funzione per controllare le variabili obbligatorie
+def check_env_variables():
+    required_vars = {
+        "EMAIL": os.getenv("EMAIL"),
+        "APP_PASSWORD": os.getenv("APP_PASSWORD"),
+        "TELEGRAM_BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN"),
+        "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID")
+    }
+    missing = [var for var, value in required_vars.items() if not value]
+    if missing:
+        print(f"[!] Errore: variabili mancanti nel file .env: {', '.join(missing)}")
+        print("Assicurati che il file .env esista nella stessa cartella dello script e contenga:")
+        print("EMAIL=...")
+        print("APP_PASSWORD=...")
+        print("TELEGRAM_BOT_TOKEN=...")
+        print("TELEGRAM_CHAT_ID=...")
+        return False
+    return True
+
+# Variabili di configurazione (con valori di default per quelle opzionali)
+EMAIL = os.getenv("EMAIL")
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
+SUBJECT = os.getenv("SUBJECT", "Conferma la tua presenza")
+
+def send_telegram_message(text, photo_path=None):
+    """Invia un messaggio testuale e opzionalmente una foto su Telegram."""
+    try:
+        if photo_path:
+            with open(photo_path, 'rb') as photo:
+                files = {'photo': photo}
+                data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': text}
+                r = requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                    files=files, data=data
+                )
+        else:
+            data = {'chat_id': TELEGRAM_CHAT_ID, 'text': text}
+            r = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                data=data
+            )
+        r.raise_for_status()
+        print("[Telegram] Messaggio inviato.")
+    except Exception as e:
+        print(f"[!] Errore nell'invio del messaggio Telegram: {e}")
 
 def url_and_pin_extraction_from_email():
     url = None
@@ -29,16 +79,42 @@ def url_and_pin_extraction_from_email():
                         print("Pin studente estratto: "+student_pin)
                     else:
                         print("Errore nella estrazione del pin")
-                        print("[/!\] Conferma non effettuata!")
+                        print("[!] Conferma non effettuata!")
                 else:
                     print("Link non trovato nel testo dell'email!")
-                    print("[/!\] Conferma non effettuata!")
+                    print("[!] Conferma non effettuata!")
     except Exception as e:
-        print(f"[/!\] Errore durante il controllo della mail: {e}")
-        print("[/!\] Conferma non effettuata!")
+        print(f"[!] Errore durante il controllo della mail: {e}")
+        print("[!] Conferma non effettuata!")
     return url, student_pin
 
+def check_confirmation_status(page):
+    """
+    Controlla se dopo la conferma appare una notifica verde (successo) o rossa (errore).
+    Restituisce (success: bool, message: str)
+    """
+    try:
+        # Attendi al massimo 5 secondi la comparsa di una notifica
+        notification = page.wait_for_selector(".alert, .toast, [role='alert']", timeout=5000)
+        if notification:
+            text = notification.inner_text().lower()
+            class_attr = notification.get_attribute("class") or ""
+            if "success" in class_attr or "verde" in text or "confermata" in text:
+                return True, notification.inner_text()
+            elif "danger" in class_attr or "error" in class_attr or "rosso" in text or "errore" in text:
+                return False, notification.inner_text()
+            else:
+                if any(word in text for word in ["successo", "confermata", "ok"]):
+                    return True, notification.inner_text()
+                else:
+                    return False, notification.inner_text()
+        else:
+            return False, "Nessuna notifica rilevata, esito sconosciuto"
+    except Exception as e:
+        return False, f"Errore nel controllo della notifica: {e}"
+
 def lesson_confirmation(url, student_pin):
+    screenshot_path = None
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
@@ -62,20 +138,49 @@ def lesson_confirmation(url, student_pin):
 
             page.wait_for_load_state("networkidle")
             time.sleep(2)
-            datetime_now = datetime.now().strftime('%dd%mm%Yy_%Hh%Mm%Ss')
+
+            success, notification_msg = check_confirmation_status(page)
+
+            datetime_now = datetime.now().strftime('%Y%m%d_%H%M%S')
             screenshot_path = f"Conferma_{datetime_now}.png"
             page.screenshot(path=screenshot_path)
             print("[V] Screenshot salvato")
+
+            if success:
+                msg = f"Conferma effettuata con successo\nNotifica: {notification_msg}"
+                print("[V] "+msg)
+                send_telegram_message("✅ "+msg, screenshot_path)
+            else:
+                msg = f"Errore nella conferma\nMotivo: {notification_msg}"
+                print("[!] "+msg)
+                send_telegram_message("❌ "+msg, screenshot_path)
+
+            return success, screenshot_path
+
         except Exception as e:
-            print(f"[/!\] Errore durante la conferma della lezione: {e}")
-            print("[/!\] Conferma non effettuata!")
+            error_msg = f"Errore durante la conferma della lezione: {e}"
+            print("[!] "+error_msg)
+            try:
+                screenshot_path = f"Errore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                page.screenshot(path=screenshot_path)
+                send_telegram_message("❌ "+error_msg, screenshot_path)
+            except:
+                send_telegram_message("❌ "+error_msg)
+            return False, screenshot_path
+
         finally:
             browser.close()
 
 if __name__ == "__main__":
-    print("Bot avviato, controllo mail in silenzio ogni 45 secondi...\n")
+    # Controllo variabili d'ambiente prima di partire
+    if not check_env_variables():
+        exit(1)
+
+    print("Script avviato, controllo mail ogni 100 secondi...\n")
+    send_telegram_message("Bot avviato - Inizio monitoraggio email")
+
     while True:
         url, student_pin = url_and_pin_extraction_from_email()
-        if (url != None and student_pin != None):
+        if url and student_pin:
             lesson_confirmation(url, student_pin)
-        time.sleep(45)
+        time.sleep(100)
