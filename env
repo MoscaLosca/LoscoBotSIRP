@@ -1,0 +1,22 @@
+# --- Obbligatorie -----------------------------------------------------------
+EMAIL=tuaemail@gmail.com
+APP_PASSWORD=xxxx xxxx xxxx xxxx
+TELEGRAM_BOT_TOKEN=il_tuo_bot_token
+TELEGRAM_CHAT_ID=il_tuo_chat_id
+
+# --- Opzionali (i valori qui sotto sono i default) --------------------------
+IMAP_SERVER=imap.gmail.com
+SUBJECT=Conferma la tua presenza
+
+# Secondi tra un controllo della casella e il successivo
+CHECK_INTERVAL=100
+
+# Tentativi massimi per la stessa email in caso di errore transitorio,
+# poi il bot rinuncia e invia il link su Telegram per la conferma manuale
+MAX_ATTEMPTS=5
+
+# Cartella degli screenshot (default: sottocartella "screenshots" accanto allo script)
+#SCREENSHOT_DIR=/opt/loscobot/screenshots
+
+# Gli screenshot più vecchi di questo numero di giorni vengono cancellati
+SCREENSHOT_RETENTION_DAYS=15
