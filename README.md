@@ -121,4 +121,3 @@ A ogni ciclo i file più vecchi di `SCREENSHOT_RETENTION_DAYS` giorni vengono el
 
 - Il browser gira in modo invisibile in background
 - Lo script è pensato per Gmail, ma funziona con qualsiasi provider IMAP configurando `IMAP_SERVER` nel file `.env`
-- Non committare mai il file `.env`: aggiungilo a `.gitignore` insieme a `screenshots/`
